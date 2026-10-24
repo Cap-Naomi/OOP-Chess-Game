@@ -1,5 +1,8 @@
 package board;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import pieces.*;
 import utils.Color;
 import utils.Position;
@@ -13,11 +16,19 @@ public class Board {
     /** The 8x8 grid storing the pieces currently on the board. */
     private final Piece[][] grid;
 
+    /** Pieces captured by White. */
+    private final List<Piece> capturedByWhite;
+
+    /** Pieces captured by Black. */
+    private final List<Piece> capturedByBlack;
+
     /**
      * Constructs a new Board and initializes it with the standard chess starting positions.
      */
     public Board() {
         this.grid = new Piece[8][8];
+        this.capturedByWhite = new ArrayList<>();
+        this.capturedByBlack = new ArrayList<>();
         initializeBoard();
     }
 
@@ -25,12 +36,14 @@ public class Board {
      * Populates the 8x8 grid with all 32 chess pieces in their standard starting squares.
      */
     public final void initializeBoard() {
-        // Clear board first
+        // Clear board and capture lists first
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
                 grid[r][c] = null;
             }
         }
+        capturedByWhite.clear();
+        capturedByBlack.clear();
 
         // Black back rank (Row 0 / Rank 8)
         placePiece(new Rook(Color.BLACK, new Position(0, 0)));
@@ -111,6 +124,49 @@ public class Board {
     }
 
     /**
+     * Attempts to move a piece from one board position to another.
+     *
+     * @param current the position of the piece to move
+     * @param destination the position to move the piece to
+     * @return {@code true} if the move is completed; {@code false} if it is invalid
+     */
+    public boolean movePiece(Position current, Position destination) {
+        // checking for valid input and valid positions
+        if (current == null || destination == null
+                || !current.isValid() || !destination.isValid()
+                || current.equals(destination)) {
+            return false;
+        }
+        
+        Piece piece = getPiece(current);
+        if (piece == null || !piece.isValidMove(destination, this)) { // if piece dne or invalid move 
+            return false;
+        }
+
+        Piece target = getPiece(destination);
+        if (target != null && target.getColor() == piece.getColor()) { // if piece at destination is current player's
+            return false;
+        }
+
+        // validation for castling *
+
+        grid[current.getRow()][current.getCol()] = null; // clear current pieces square
+        if (target != null) {
+            if (piece.getColor() == Color.WHITE) {
+                capturedByWhite.add(target);
+            } else {
+                capturedByBlack.add(target);
+            }
+        }
+        piece.setPosition(destination);
+        grid[destination.getRow()][destination.getCol()] = piece;
+
+        // if castling *
+
+        return true;
+    }
+
+    /**
      * Prints the current state of the chessboard to the console with rank and file labels.
      */
     public void display() {
@@ -132,5 +188,6 @@ public class Board {
             }
             System.out.println();
         }
+        System.out.println();
     }
 }
