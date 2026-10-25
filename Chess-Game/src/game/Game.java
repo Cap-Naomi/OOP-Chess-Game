@@ -32,58 +32,69 @@ public class Game {
      * @param input the scanner providing player input
      */
     public void play(Scanner input) {
-        while (input.hasNextLine()) {
+        String message = "";
+
+        while (true) {
+            // clear console
             System.out.print("\033[H\033[2J");
             System.out.flush();
 
+            // draw the current board state and player turn
             board.display();
             System.out.println("Player turn: " + currentTurn);
+            if (!message.isEmpty()) {
+                System.out.println(message);
+                message = "";
+            }
             System.out.println("Enter a move (e.g. E2 E4) or 'q' to quit:");
+
+            if (!input.hasNextLine()) {
+                break; // input closed
+            }
             String line = input.nextLine().trim();
 
             if (line.equalsIgnoreCase("q")) {
-                break; // end in draw *
+                break;
             }
 
-            String[] squares = line.split("\\s+"); // store square at each space
+            String[] squares = line.split("\\s+"); // store squares based on whitespace separation
             if (squares.length != 2) {
-                System.out.println("Enter only two squares e.g. E2 E4.");
+                message = "Enter only two squares e.g. E2 E4.";
                 continue;
             }
 
             Position current;
             Position destination;
-            try {
+            try { // convert notion of user input to Position objects
                 current = Position.fromAlgebraic(squares[0]);
                 destination = Position.fromAlgebraic(squares[1]);
             } catch (IllegalArgumentException exception) {
-                System.out.println(exception.getMessage());
+                message = exception.getMessage();
                 continue;
             }
 
             Piece piece = board.getPiece(current);
             if (piece == null) {
-                System.out.println("There is no piece on " + current + ".");
+                message = "There is no piece on " + current + ".";
                 continue;
             }
 
             if (piece.getColor() != currentTurn) {
-                System.out.println("That piece belongs to the other player.");
+                message = "That piece belongs to the other player.";
                 continue;
             }
 
-            if (!board.movePiece(current, destination)) {
-                System.out.println("That piece can't move to " + destination + ".");
+            if (!board.movePiece(current, destination)) { // check valid move and update board if valid
+                message = "That piece can't move to " + destination + ".";
                 continue;
             }
 
             // check for check/checkmate/stalemate *
 
-            currentTurn = currentTurn.opposite(); // alternate turn
+            currentTurn = currentTurn.opposite();
         }
-        
+
         System.out.println("End of game.");
-        // display who won or draw *
     }
     
     /**

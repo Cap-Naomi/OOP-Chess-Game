@@ -8,6 +8,9 @@ public class Main {
 
         Game game = new Game();
         try (Scanner input = new Scanner(System.in)) {
+            if (input.hasNextLine()) {
+                input.nextLine(); // take in first 'Enter' input before starting game
+            }
             game.play(input);
         }
     }
