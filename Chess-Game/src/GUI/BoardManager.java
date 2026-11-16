@@ -4,13 +4,16 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Window;
 import java.util.List;
 import java.util.Objects;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingConstants;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
@@ -187,6 +190,10 @@ public final class BoardManager extends JPanel {
      * @param clickedPosition the position represented by the clicked square
      */
     private void handleSquareClick(Position clickedPosition) {
+        if (game.isGameOver()) {
+            return;
+        }
+
         Piece clickedPiece = game.getBoard().getPiece(clickedPosition);
         if (selectedPosition == null) {
             selectPiece(clickedPosition, clickedPiece);
@@ -211,13 +218,32 @@ public final class BoardManager extends JPanel {
         boolean capture = clickedPiece != null;
         if (game.makeMove(from, clickedPosition)) {
             selectedPosition = null;
-            statusLabel.setText(capture
-                    ? "Piece captured on " + clickedPosition + "."
-                    : "Moved to " + clickedPosition + ".");
+            if (game.isGameOver()) {
+                statusLabel.setText(game.getWinner() + " wins!");
+            } else {
+                statusLabel.setText(capture
+                        ? "Piece captured on " + clickedPosition + "."
+                        : "Moved to " + clickedPosition + ".");
+            }
         } else {
             statusLabel.setText("That move is not valid. Choose another destination.");
         }
         refreshBoard();
+        if (game.isGameOver()) {
+            showWinnerDialog();
+        }
+    }
+
+    /**
+     * Declares the winner and closes the game window after the dialog is dismissed.
+     */
+    private void showWinnerDialog() {
+        JOptionPane.showMessageDialog(this, game.getWinner() + " wins!", "Game Over",
+                JOptionPane.INFORMATION_MESSAGE);
+        Window window = SwingUtilities.getWindowAncestor(this);
+        if (window != null) {
+            window.dispose();
+        }
     }
 
     /**
@@ -243,7 +269,9 @@ public final class BoardManager extends JPanel {
      * from the current game state.
      */
     private void refreshBoard() {
-        turnLabel.setText(game.getCurrentTurn() + " to move");
+        turnLabel.setText(game.isGameOver()
+                ? game.getWinner() + " wins"
+                : game.getCurrentTurn() + " to move");
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 Position position = new Position(row, col);
@@ -276,12 +304,23 @@ public final class BoardManager extends JPanel {
             return "None";
         }
 
-        StringBuilder symbols = new StringBuilder();
+        StringBuilder symbols = new StringBuilder(); 
+        // for (Piece piece : capturedPieces) {
+        //     if (symbols.length() > 0) {
+        //         symbols.append(' ');
+        //     }
+        //     symbols.append(pieceSymbol(piece));
+        // }
+        // return symbols.toString();
+        // add correct color to captured pieces
         for (Piece piece : capturedPieces) {
             if (symbols.length() > 0) {
                 symbols.append(' ');
             }
-            symbols.append(pieceSymbol(piece));
+            String symbol = pieceSymbol(piece);
+            java.awt.Color color = pieceColor(piece, false);
+            String coloredSymbol = "<html><font color='rgb(" + color.getRed() + "," + color.getGreen() + "," + color.getBlue() + ")'>" + symbol + "</font></html>";
+            symbols.append(coloredSymbol);
         }
         return symbols.toString();
     }

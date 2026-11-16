@@ -3,6 +3,7 @@ package game;
 import java.util.Scanner;
 
 import board.Board;
+import pieces.King;
 import pieces.Piece;
 import utils.Color;
 import utils.Position;
@@ -17,6 +18,9 @@ public class Game {
 
     /** The color of the player whose turn it is. */
     private Color currentTurn;
+
+    /** The winning color, or {@code null} while the game is still in progress. */
+    private Color winner;
 
     /**
      * Creates a game with a newly initialized board and White to move first.
@@ -45,20 +49,48 @@ public class Game {
     }
 
     /**
+     * Gets the winning color once a King has been captured.
+     *
+     * @return the winning color, or {@code null} if the game is still in progress
+     */
+    public Color getWinner() {
+        return winner;
+    }
+
+    /**
+     * Checks whether a player has won by capturing the opposing King.
+     *
+     * @return {@code true} if the game has ended
+     */
+    public boolean isGameOver() {
+        return winner != null;
+    }
+
+    /**
      * Attempts a move for the current player and advances the turn on success.
+     * Capturing the opposing King ends the game without advancing the turn.
      *
      * @param current the position of the piece to move
      * @param destination the destination position
      * @return {@code true} if the current player's move succeeds
      */
     public boolean makeMove(Position current, Position destination) {
+        if (isGameOver()) {
+            return false;
+        }
+
         Piece piece = board.getPiece(current);
+        Piece capturedPiece = board.getPiece(destination);
         if (piece == null || piece.getColor() != currentTurn
                 || !board.movePiece(current, destination)) {
             return false;
         }
 
-        currentTurn = currentTurn.opposite();
+        if (capturedPiece instanceof King) {
+            winner = currentTurn;
+        } else {
+            currentTurn = currentTurn.opposite();
+        }
         return true;
     }
     
@@ -120,14 +152,17 @@ public class Game {
                 continue;
             }
 
-            if (!board.movePiece(current, destination)) { // check valid move and update board if valid
+            if (!makeMove(current, destination)) { // check valid move and update board if valid
                 message = "That piece can't move to " + destination + ".";
                 continue;
             }
 
-            // check for check/checkmate/stalemate *
+            if (isGameOver()) {
+                System.out.println(winner + " wins!");
+                break;
+            }
 
-            currentTurn = currentTurn.opposite();
+            // check for check/checkmate/stalemate *
         }
 
         System.out.println("End of game.");
