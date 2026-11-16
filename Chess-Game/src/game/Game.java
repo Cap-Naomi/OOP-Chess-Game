@@ -25,6 +25,42 @@ public class Game {
         board = new Board();
         currentTurn = Color.WHITE;
     }
+
+    /**
+     * Gets the board used for the current game.
+     *
+     * @return the current game board
+     */
+    public Board getBoard() {
+        return board;
+    }
+
+    /**
+     * Gets the color of the player whose turn it is.
+     *
+     * @return the current player's color
+     */
+    public Color getCurrentTurn() {
+        return currentTurn;
+    }
+
+    /**
+     * Attempts a move for the current player and advances the turn on success.
+     *
+     * @param current the position of the piece to move
+     * @param destination the destination position
+     * @return {@code true} if the current player's move succeeds
+     */
+    public boolean makeMove(Position current, Position destination) {
+        Piece piece = board.getPiece(current);
+        if (piece == null || piece.getColor() != currentTurn
+                || !board.movePiece(current, destination)) {
+            return false;
+        }
+
+        currentTurn = currentTurn.opposite();
+        return true;
+    }
     
     /**
      * Reads and processes moves from the supplied input until the game ends.

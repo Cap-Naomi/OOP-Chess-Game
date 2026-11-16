@@ -1,6 +1,7 @@
 package board;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import pieces.*;
@@ -99,6 +100,24 @@ public class Board {
             return null;
         }
         return grid[position.getRow()][position.getCol()];
+    }
+
+    /**
+     * Gets the pieces captured by White.
+     *
+     * @return an unmodifiable view of White's captured pieces
+     */
+    public List<Piece> getCapturedByWhite() {
+        return Collections.unmodifiableList(capturedByWhite);
+    }
+
+    /**
+     * Gets the pieces captured by Black.
+     *
+     * @return an unmodifiable view of Black's captured pieces
+     */
+    public List<Piece> getCapturedByBlack() {
+        return Collections.unmodifiableList(capturedByBlack);
     }
 
     /**
