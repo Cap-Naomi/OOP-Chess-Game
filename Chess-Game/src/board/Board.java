@@ -1,7 +1,9 @@
 package board;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
 
 import pieces.*;
@@ -23,6 +25,9 @@ public class Board {
     /** Pieces captured by Black. */
     private final List<Piece> capturedByBlack;
 
+    /** Successful moves in the order they were made. */
+    private final Deque<MoveSnapshot> moveHistory;
+
     /**
      * Constructs a new Board and initializes it with the standard chess starting positions.
      */
@@ -30,6 +35,7 @@ public class Board {
         this.grid = new Piece[8][8];
         this.capturedByWhite = new ArrayList<>();
         this.capturedByBlack = new ArrayList<>();
+        this.moveHistory = new ArrayDeque<>();
         initializeBoard();
     }
 
@@ -45,6 +51,7 @@ public class Board {
         }
         capturedByWhite.clear();
         capturedByBlack.clear();
+        moveHistory.clear();
 
         // Black back rank (Row 0 / Rank 8)
         placePiece(new Rook(Color.BLACK, new Position(0, 0)));
@@ -167,6 +174,7 @@ public class Board {
             return false;
         }
 
+        MoveSnapshot move = new MoveSnapshot(piece, current, destination, target, piece.hasMoved());
         // validation for castling *
 
         grid[current.getRow()][current.getCol()] = null; // clear current pieces square
@@ -179,10 +187,68 @@ public class Board {
         }
         piece.setPosition(destination);
         grid[destination.getRow()][destination.getCol()] = piece;
+        moveHistory.push(move);
 
         // if castling *
 
         return true;
+    }
+
+    /**
+     * Reverts the most recent successful move, restoring its moving and captured pieces.
+     *
+     * @return {@code true} if a move was reverted; {@code false} if there is no move to undo
+     * @throws IllegalStateException if the board no longer matches the recorded move
+     */
+    public boolean undoLastMove() {
+        if (moveHistory.isEmpty()) {
+            return false;
+        }
+
+        MoveSnapshot move = moveHistory.peek();
+        int fromRow = move.from.getRow();
+        int fromCol = move.from.getCol();
+        int toRow = move.to.getRow();
+        int toCol = move.to.getCol();
+        if (grid[toRow][toCol] != move.piece || grid[fromRow][fromCol] != null) {
+            throw new IllegalStateException("Board state does not match the most recent move.");
+        }
+
+        List<Piece> capturedPieces = move.piece.getColor() == Color.WHITE
+                ? capturedByWhite
+                : capturedByBlack;
+        if (move.capturedPiece != null && !capturedPieces.contains(move.capturedPiece)) {
+            throw new IllegalStateException("Captured piece is missing from the capture history.");
+        }
+
+        moveHistory.pop();
+        grid[toRow][toCol] = null;
+        move.piece.setPosition(move.from);
+        move.piece.setHasMoved(move.pieceHadMoved);
+        grid[fromRow][fromCol] = move.piece;
+        if (move.capturedPiece != null) {
+            capturedPieces.remove(move.capturedPiece);
+            grid[toRow][toCol] = move.capturedPiece;
+        }
+        return true;
+    }
+
+    /** Stores the board state needed to reverse one successful move. */
+    private static final class MoveSnapshot {
+        private final Piece piece;
+        private final Position from;
+        private final Position to;
+        private final Piece capturedPiece;
+        private final boolean pieceHadMoved;
+
+        private MoveSnapshot(Piece piece, Position from, Position to,
+                Piece capturedPiece, boolean pieceHadMoved) {
+            this.piece = piece;
+            this.from = from;
+            this.to = to;
+            this.capturedPiece = capturedPiece;
+            this.pieceHadMoved = pieceHadMoved;
+        }
     }
 
     /**

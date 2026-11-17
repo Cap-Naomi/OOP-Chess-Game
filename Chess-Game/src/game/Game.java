@@ -1,5 +1,8 @@
 package game;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Scanner;
 
 import board.Board;
@@ -22,12 +25,16 @@ public class Game {
     /** The winning color, or {@code null} while the game is still in progress. */
     private Color winner;
 
+    /** Successful moves in the order they were made. */
+    private final List<MoveRecord> moveHistory;
+
     /**
      * Creates a game with a newly initialized board and White to move first.
      */
     public Game() { 
         board = new Board();
         currentTurn = Color.WHITE;
+        moveHistory = new ArrayList<>();
     }
 
     /**
@@ -67,6 +74,15 @@ public class Game {
     }
 
     /**
+     * Gets an unmodifiable view of the moves made during this game.
+     *
+     * @return the move history in chronological order
+     */
+    public List<MoveRecord> getMoveHistory() {
+        return Collections.unmodifiableList(moveHistory);
+    }
+
+    /**
      * Attempts a move for the current player and advances the turn on success.
      * Capturing the opposing King ends the game without advancing the turn.
      *
@@ -86,12 +102,98 @@ public class Game {
             return false;
         }
 
+        moveHistory.add(new MoveRecord(currentTurn, piece.getSymbol(), current, destination,
+                capturedPiece == null ? null : capturedPiece.getSymbol()));
         if (capturedPiece instanceof King) {
             winner = currentTurn;
         } else {
             currentTurn = currentTurn.opposite();
         }
         return true;
+    }
+
+    /**
+     * Reverts the most recent move and restores the corresponding turn and game status.
+     *
+     * @return {@code true} if a move was reverted; {@code false} if there is no move to undo
+     */
+    public boolean undoLastMove() {
+        if (moveHistory.isEmpty()) {
+            return false;
+        }
+
+        MoveRecord move = moveHistory.get(moveHistory.size() - 1);
+        if (!board.undoLastMove()) {
+            return false;
+        }
+
+        moveHistory.remove(moveHistory.size() - 1);
+        currentTurn = move.getPlayerColor();
+        winner = null;
+        return true;
+    }
+
+    /** Immutable details about a move, used by the game history display. */
+    public static final class MoveRecord {
+        private final Color playerColor;
+        private final String pieceSymbol;
+        private final Position from;
+        private final Position to;
+        private final String capturedPieceSymbol;
+
+        private MoveRecord(Color playerColor, String pieceSymbol, Position from, Position to,
+                String capturedPieceSymbol) {
+            this.playerColor = playerColor;
+            this.pieceSymbol = pieceSymbol;
+            this.from = from;
+            this.to = to;
+            this.capturedPieceSymbol = capturedPieceSymbol;
+        }
+
+        /**
+         * Gets the color of the player who made the move.
+         *
+         * @return the moving player's color
+         */
+        public Color getPlayerColor() {
+            return playerColor;
+        }
+
+        /**
+         * Gets the symbol of the piece that moved.
+         *
+         * @return the moving piece's two-character symbol
+         */
+        public String getPieceSymbol() {
+            return pieceSymbol;
+        }
+
+        /**
+         * Gets the move's starting square.
+         *
+         * @return the starting position
+         */
+        public Position getFrom() {
+            return from;
+        }
+
+        /**
+         * Gets the move's destination square.
+         *
+         * @return the destination position
+         */
+        public Position getTo() {
+            return to;
+        }
+
+        /**
+         * Gets the captured piece's symbol, if the move captured a piece.
+         *
+         * @return the captured piece's two-character symbol, or {@code null}
+         */
+        public String getCapturedPieceSymbol() {
+            return capturedPieceSymbol;
+        }
     }
     
     /**
