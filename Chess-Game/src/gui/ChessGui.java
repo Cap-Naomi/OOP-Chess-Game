@@ -5,14 +5,25 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
+import java.io.IOException;
 import javax.swing.BorderFactory;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import pieces.Bishop;
 import pieces.King;
 import pieces.Knight;
@@ -24,8 +35,9 @@ import utils.Color;
 import utils.Position;
 
 /**
- * Swing GUI window for the Chess Game with turn enforcement,
- * validated piece movement and capturing, and King-capture endgame notification.
+ * Swing GUI window for the Chess Game with a Game menu bar (New, Save, Load),
+ * turn enforcement, validated piece movement and capturing, and King-capture
+ * endgame notification.
  */
 public class ChessGui extends JFrame {
 
@@ -50,11 +62,14 @@ public class ChessGui extends JFrame {
     /** Status bar displaying turn and capture updates. */
     private final JLabel statusLabel;
 
-    /** Handles validated moves and piece capturing (Section 4). */
-    private final CaptureManager captureManager;
+    /** Handles validated moves and piece capturing. */
+    private CaptureManager captureManager;
 
-    /** Handles King capture winner notification and exit (Section 5). */
+    /** Handles King capture winner notification and exit. */
     private final EndgameNotifier endgameNotifier;
+
+    /** Handles saving and loading game state files. */
+    private final GameStateManager gameStateManager;
 
     /** Color of the player whose turn it currently is. */
     private Color currentTurn;
@@ -74,10 +89,12 @@ public class ChessGui extends JFrame {
         this.squares = new JLabel[8][8];
         this.captureManager = new CaptureManager();
         this.endgameNotifier = new EndgameNotifier();
+        this.gameStateManager = new GameStateManager();
         this.currentTurn = Color.WHITE;
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
+        setJMenuBar(createMenuBar());
 
         boardPanel = new JPanel(new GridLayout(8, 8));
         boardPanel.setPreferredSize(new Dimension(640, 640));
@@ -106,6 +123,113 @@ public class ChessGui extends JFrame {
         pack();
         setLocationRelativeTo(null);
         setResizable(false);
+    }
+
+    /**
+     * Builds the top menu bar containing New Game, Save Game, and Load Game items.
+     *
+     * @return the configured {@link JMenuBar}
+     */
+    private JMenuBar createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu gameMenu = new JMenu("Game");
+        int shortcutMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+
+        JMenuItem newGameItem = new JMenuItem("New Game");
+        newGameItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, shortcutMask));
+        newGameItem.addActionListener(e -> startNewGame());
+
+        JMenuItem saveGameItem = new JMenuItem("Save Game");
+        saveGameItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, shortcutMask));
+        saveGameItem.addActionListener(e -> saveGame());
+
+        JMenuItem loadGameItem = new JMenuItem("Load Game");
+        loadGameItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, shortcutMask));
+        loadGameItem.addActionListener(e -> loadGame());
+
+        gameMenu.add(newGameItem);
+        gameMenu.addSeparator();
+        gameMenu.add(saveGameItem);
+        gameMenu.add(loadGameItem);
+
+        menuBar.add(gameMenu);
+        return menuBar;
+    }
+
+    /**
+     * Resets the board, turn state, selection, and capture tracking for a fresh game.
+     */
+    private void startNewGame() {
+        board.initializeBoard();
+        captureManager = new CaptureManager();
+        currentTurn = Color.WHITE;
+        selectedPos = null;
+        pressPos = null;
+        refreshBoard();
+        statusLabel.setText("New game started. Turn: WHITE — Click or drag a piece to move.");
+    }
+
+    /**
+     * Prompts the user for a file location and saves the current game state.
+     */
+    private void saveGame() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Save Chess Game");
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Chess Save Files (*.txt)", "txt"));
+
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+            if (!file.getName().toLowerCase().endsWith(".txt")) {
+                file = new File(file.getAbsolutePath() + ".txt");
+            }
+
+            try {
+                gameStateManager.saveGame(board, currentTurn, file);
+                statusLabel.setText("Game saved to " + file.getName() + ". Turn: " + currentTurn);
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Game saved successfully to:\n" + file.getName(),
+                        "Save Game",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Failed to save game:\n" + ex.getMessage(),
+                        "Save Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        }
+    }
+
+    /**
+     * Prompts the user to select a saved game file and restores the board and turn state.
+     */
+    private void loadGame() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Load Chess Game");
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Chess Save Files (*.txt)", "txt"));
+
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+
+            try {
+                currentTurn = gameStateManager.loadGame(board, file);
+                captureManager = new CaptureManager();
+                selectedPos = null;
+                pressPos = null;
+                refreshBoard();
+                statusLabel.setText("Game loaded from " + file.getName() + ". Turn: " + currentTurn);
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Failed to load game:\n" + ex.getMessage(),
+                        "Load Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
+        }
     }
 
     /**

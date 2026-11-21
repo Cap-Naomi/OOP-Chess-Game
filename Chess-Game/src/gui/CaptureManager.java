@@ -170,4 +170,11 @@ public class CaptureManager {
     public List<Piece> getCapturedByBlack() {
         return Collections.unmodifiableList(capturedByBlack);
     }
+    /**
+     * Clears all recorded captured pieces for both players.
+     */
+    public void reset() {
+        capturedByWhite.clear();
+        capturedByBlack.clear();
+    }
 }

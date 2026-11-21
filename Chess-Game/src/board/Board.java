@@ -190,4 +190,16 @@ public class Board {
         }
         System.out.println();
     }
+    /**
+     * Clears all pieces from the board and resets the capture lists.
+     */
+    public void clearBoard() {
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                grid[r][c] = null;
+            }
+        }
+        capturedByWhite.clear();
+        capturedByBlack.clear();
+    }
 }
