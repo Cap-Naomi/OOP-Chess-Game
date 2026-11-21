@@ -125,7 +125,7 @@ public class HistoryPanel extends JPanel {
 
         StringBuilder sb = new StringBuilder("<html><body style='width:200px;'>");
         for (Piece piece : pieces) {
-            sb.append(piece).append(" ");
+            sb.append(ChessGui.getUnicodeSymbol(piece)).append(" ");
         }
         sb.append("</body></html>");
         return sb.toString();

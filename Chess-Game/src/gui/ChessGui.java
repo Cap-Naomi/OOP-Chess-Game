@@ -2,7 +2,6 @@ package gui;
 
 import board.Board;
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.Toolkit;
@@ -14,6 +13,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -25,6 +25,7 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import pieces.Bishop;
 import pieces.King;
@@ -42,12 +43,6 @@ import utils.Position;
  * piece movement, capturing, and King-capture endgame notification.
  */
 public class ChessGui extends JFrame {
-
-    /** Light square color on the chessboard. */
-    private static final java.awt.Color LIGHT_SQUARE = new java.awt.Color(240, 217, 181);
-
-    /** Dark square color on the chessboard. */
-    private static final java.awt.Color DARK_SQUARE = new java.awt.Color(181, 136, 99);
 
     /** Highlight color for the currently selected square. */
     private static final java.awt.Color SELECTED_SQUARE = new java.awt.Color(246, 246, 105);
@@ -76,6 +71,9 @@ public class ChessGui extends JFrame {
     /** Handles saving and loading game state files. */
     private final GameStateManager gameStateManager;
 
+    /** Manages board and piece appearance settings. */
+    private final AppearanceManager appearanceManager;
+
     /** Ordered list of all moves made in the current game. */
     private final List<MoveRecord> moveHistory;
 
@@ -85,6 +83,9 @@ public class ChessGui extends JFrame {
     /** Currently selected square for click-to-move. */
     private Position selectedPos;
 
+    /** Default Swing foreground used by the classic piece palette. */
+    private final java.awt.Color defaultPieceForeground;
+
     /** Square where a mouse press began (used for drag-and-drop). */
     private Position pressPos;
 
@@ -93,11 +94,13 @@ public class ChessGui extends JFrame {
      */
     public ChessGui() {
         super("OOP Chess Game");
+        this.defaultPieceForeground = UIManager.getColor("Label.foreground");
         this.board = new Board();
         this.squares = new JLabel[8][8];
         this.captureManager = new CaptureManager();
         this.endgameNotifier = new EndgameNotifier();
         this.gameStateManager = new GameStateManager();
+        this.appearanceManager = new AppearanceManager();
         this.moveHistory = new ArrayList<>();
         this.currentTurn = Color.WHITE;
 
@@ -106,7 +109,7 @@ public class ChessGui extends JFrame {
         setJMenuBar(createMenuBar());
 
         boardPanel = new JPanel(new GridLayout(8, 8));
-        boardPanel.setPreferredSize(new Dimension(640, 640));
+        boardPanel.setPreferredSize(appearanceManager.getBoardDimension());
 
         Font pieceFont = new Font("Segoe UI Symbol", Font.PLAIN, 48);
 
@@ -135,7 +138,7 @@ public class ChessGui extends JFrame {
         refreshHistoryPanel();
         pack();
         setLocationRelativeTo(null);
-        setResizable(false);
+        setResizable(true);
     }
 
     /**
@@ -166,7 +169,28 @@ public class ChessGui extends JFrame {
         gameMenu.add(loadGameItem);
 
         menuBar.add(gameMenu);
+        JButton appearanceButton = new JButton("Appearance...");
+        appearanceButton.addActionListener(e ->
+                appearanceManager.showAppearanceDialog(this, this::refreshAppearance));
+        menuBar.add(appearanceButton);
         return menuBar;
+    }
+
+    /**
+     * Updates the board after appearance settings have been applied.
+     */
+    private void refreshAppearance() {
+        boardPanel.setPreferredSize(appearanceManager.getBoardDimension());
+        Font pieceFont = appearanceManager.getPieceFont();
+        for (JLabel[] row : squares) {
+            for (JLabel square : row) {
+                square.setFont(pieceFont);
+            }
+        }
+        refreshBoard();
+        revalidate();
+        pack();
+        setLocationRelativeTo(null);
     }
 
     /**
@@ -425,11 +449,15 @@ public class ChessGui extends JFrame {
                 if (isSelected) {
                     square.setBackground(SELECTED_SQUARE);
                 } else {
-                    square.setBackground((r + c) % 2 == 0 ? LIGHT_SQUARE : DARK_SQUARE);
+                    square.setBackground(appearanceManager.getSquareColor((r + c) % 2 != 0));
                 }
 
                 Piece piece = board.getPiece(new Position(r, c));
                 square.setText(piece != null ? getUnicodeSymbol(piece) : "");
+                square.setForeground(piece == null
+                        ? defaultPieceForeground
+                        : appearanceManager.getPieceColor(
+                                piece, !isSelected && (r + c) % 2 != 0, defaultPieceForeground));
             }
         }
     }
