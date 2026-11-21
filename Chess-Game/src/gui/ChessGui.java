@@ -24,9 +24,8 @@ import utils.Color;
 import utils.Position;
 
 /**
- * Swing GUI window for the Chess Game that demonstrates board rendering,
- * click-to-move and drag-and-drop movement, piece capturing, and King-capture
- * endgame notification.
+ * Swing GUI window for the Chess Game with turn enforcement,
+ * validated piece movement and capturing, and King-capture endgame notification.
  */
 public class ChessGui extends JFrame {
 
@@ -39,8 +38,8 @@ public class ChessGui extends JFrame {
     /** Highlight color for the currently selected square. */
     private static final java.awt.Color SELECTED_SQUARE = new java.awt.Color(246, 246, 105);
 
-    /** Internal 8x8 piece grid initialized from Board. */
-    private final Piece[][] grid;
+    /** Active chess board storing piece positions and validating moves. */
+    private final Board board;
 
     /** Visual 8x8 grid of square labels. */
     private final JLabel[][] squares;
@@ -48,14 +47,17 @@ public class ChessGui extends JFrame {
     /** Panel holding the 8x8 chessboard. */
     private final JPanel boardPanel;
 
-    /** Status bar displaying capture updates. */
+    /** Status bar displaying turn and capture updates. */
     private final JLabel statusLabel;
 
-    /** Handles piece capturing logic (Section 4). */
+    /** Handles validated moves and piece capturing (Section 4). */
     private final CaptureManager captureManager;
 
     /** Handles King capture winner notification and exit (Section 5). */
     private final EndgameNotifier endgameNotifier;
+
+    /** Color of the player whose turn it currently is. */
+    private Color currentTurn;
 
     /** Currently selected square for click-to-move. */
     private Position selectedPos;
@@ -68,12 +70,11 @@ public class ChessGui extends JFrame {
      */
     public ChessGui() {
         super("OOP Chess Game");
-        this.grid = new Piece[8][8];
+        this.board = new Board();
         this.squares = new JLabel[8][8];
         this.captureManager = new CaptureManager();
         this.endgameNotifier = new EndgameNotifier();
-
-        loadInitialBoard();
+        this.currentTurn = Color.WHITE;
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -95,7 +96,7 @@ public class ChessGui extends JFrame {
 
         attachMouseControls();
 
-        statusLabel = new JLabel("Click or drag a piece to move. Capture the opponent's King to win.");
+        statusLabel = new JLabel("Turn: WHITE — Click or drag a piece to move.");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
         add(boardPanel, BorderLayout.CENTER);
@@ -105,18 +106,6 @@ public class ChessGui extends JFrame {
         pack();
         setLocationRelativeTo(null);
         setResizable(false);
-    }
-
-    /**
-     * Loads the standard starting positions from the existing Board class.
-     */
-    private void loadInitialBoard() {
-        Board initialBoard = new Board();
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                grid[r][c] = initialBoard.getPiece(new Position(r, c));
-            }
-        }
     }
 
     /**
@@ -158,9 +147,15 @@ public class ChessGui extends JFrame {
      */
     private void handleSquareClick(Position clickedPos) {
         if (selectedPos == null) {
-            if (grid[clickedPos.getRow()][clickedPos.getCol()] != null) {
-                selectedPos = clickedPos;
+            Piece clickedPiece = board.getPiece(clickedPos);
+            if (clickedPiece == null) {
+                return;
             }
+            if (clickedPiece.getColor() != currentTurn) {
+                statusLabel.setText("It is " + currentTurn + "'s turn.");
+                return;
+            }
+            selectedPos = clickedPos;
         } else if (selectedPos.equals(clickedPos)) {
             selectedPos = null;
         } else {
@@ -170,42 +165,37 @@ public class ChessGui extends JFrame {
     }
 
     /**
-     * Attempts to move a piece, process any capture, refresh the display,
-     * and trigger endgame notification if a King was captured.
+     * Attempts a validated move, switches turns on success, refreshes the board,
+     * and triggers endgame notification if a King was captured.
      *
      * @param from        the starting coordinate
      * @param destination the target coordinate
      */
     private void attemptMove(Position from, Position destination) {
-        Piece movingPiece = grid[from.getRow()][from.getCol()];
-        Piece targetPiece = grid[destination.getRow()][destination.getCol()];
+        Color movingColor = currentTurn;
+        CaptureManager.MoveResult result = captureManager.executeMove(board, from, destination, currentTurn);
 
-        if (movingPiece == null) {
+        if (!result.isMoved()) {
+            statusLabel.setText(result.getMessage() + " (Turn: " + currentTurn + ")");
             return;
         }
 
-        if (captureManager.isFriendlyOccupied(movingPiece, targetPiece)) {
-            statusLabel.setText("Cannot capture your own piece.");
-            return;
-        }
-
-        Color movingColor = movingPiece.getColor();
-        Piece captured = captureManager.executeMoveAndCapture(grid, from, destination);
+        // Switch turns after a valid move
+        currentTurn = currentTurn.opposite();
 
         // Refresh immediately so any captured piece disappears before the pop-up appears
         refreshBoard();
 
-        if (captured != null) {
-            statusLabel.setText(movingColor + " captured " + captured.getColor() + " " + captured.getClass().getSimpleName() + "!");
-            endgameNotifier.checkAndNotifyWinner(captured, movingColor, this);
+        if (result.getCapturedPiece() != null) {
+            statusLabel.setText(result.getMessage() + " Next turn: " + currentTurn);
+            endgameNotifier.checkAndNotifyWinner(result.getCapturedPiece(), movingColor, this);
         } else {
-            statusLabel.setText("Moved " + movingColor + " " + movingPiece.getClass().getSimpleName()
-                    + " from " + from + " to " + destination + ".");
+            statusLabel.setText(result.getMessage() + " Next turn: " + currentTurn);
         }
     }
 
     /**
-     * Redraws all 64 squares and piece symbols based on the current grid state.
+     * Redraws all 64 squares and piece symbols based on the current Board state.
      */
     private void refreshBoard() {
         for (int r = 0; r < 8; r++) {
@@ -221,7 +211,7 @@ public class ChessGui extends JFrame {
                     square.setBackground((r + c) % 2 == 0 ? LIGHT_SQUARE : DARK_SQUARE);
                 }
 
-                Piece piece = grid[r][c];
+                Piece piece = board.getPiece(new Position(r, c));
                 square.setText(piece != null ? getUnicodeSymbol(piece) : "");
             }
         }
@@ -260,35 +250,6 @@ public class ChessGui extends JFrame {
         if (piece instanceof Knight) return white ? "\u2658" : "\u265E";
         if (piece instanceof Pawn)   return white ? "\u2659" : "\u265F";
         return piece.getSymbol();
-    }
-
-    /** Handles move capture operations for the GUI. */
-    private static final class CaptureManager {
-        private boolean isFriendlyOccupied(Piece movingPiece, Piece targetPiece) {
-            return movingPiece != null && targetPiece != null
-                    && movingPiece.getColor() == targetPiece.getColor();
-        }
-
-        private Piece executeMoveAndCapture(Piece[][] grid, Position from, Position destination) {
-            Piece captured = grid[destination.getRow()][destination.getCol()];
-            Piece movingPiece = grid[from.getRow()][from.getCol()];
-
-            grid[from.getRow()][from.getCol()] = null;
-            grid[destination.getRow()][destination.getCol()] = movingPiece;
-            return captured;
-        }
-    }
-
-    /** Shows the winner and closes the application when a King is captured. */
-    private static final class EndgameNotifier {
-        private void checkAndNotifyWinner(Piece captured, Color winner, ChessGui parent) {
-            if (captured instanceof King) {
-                javax.swing.JOptionPane.showMessageDialog(parent,
-                        winner + " wins! The opponent's King was captured.",
-                        "Game Over", javax.swing.JOptionPane.INFORMATION_MESSAGE);
-                System.exit(0);
-            }
-        }
     }
 
     /**

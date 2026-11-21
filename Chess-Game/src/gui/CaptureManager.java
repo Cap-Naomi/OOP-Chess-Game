@@ -1,5 +1,6 @@
 package gui;
 
+import board.Board;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -8,11 +9,48 @@ import utils.Color;
 import utils.Position;
 
 /**
- * Manages piece capturing logic for the chess GUI.
- * Handles removing captured opponent pieces from the board grid
- * and tracking captured pieces for both players.
+ * Manages validated piece movement and capturing logic for the chess GUI.
+ * Delegates move legality to {@link Board#movePiece(Position, Position)}
+ * and tracks captured pieces for both players.
  */
 public class CaptureManager {
+
+    /**
+     * Immutable result of an attempted move on the board.
+     */
+    public static class MoveResult {
+        private final boolean moved;
+        private final Piece capturedPiece;
+        private final String message;
+
+        /**
+         * Constructs a MoveResult.
+         *
+         * @param moved         whether the move was valid and executed
+         * @param capturedPiece the captured opponent piece, or {@code null} if none
+         * @param message       a status message describing the outcome
+         */
+        public MoveResult(boolean moved, Piece capturedPiece, String message) {
+            this.moved = moved;
+            this.capturedPiece = capturedPiece;
+            this.message = message;
+        }
+
+        /** @return {@code true} if the move succeeded */
+        public boolean isMoved() {
+            return moved;
+        }
+
+        /** @return the captured piece, or {@code null} if no capture occurred */
+        public Piece getCapturedPiece() {
+            return capturedPiece;
+        }
+
+        /** @return the status message for the GUI */
+        public String getMessage() {
+            return message;
+        }
+    }
 
     /** Pieces captured by the White player. */
     private final List<Piece> capturedByWhite;
@@ -29,8 +67,7 @@ public class CaptureManager {
     }
 
     /**
-     * Checks whether moving a piece onto a destination square results in
-     * capturing an opponent's piece.
+     * Checks whether moving a piece onto a destination square targets an opponent's piece.
      *
      * @param movingPiece the piece being moved
      * @param targetPiece the piece currently occupying the destination square (may be null)
@@ -43,8 +80,7 @@ public class CaptureManager {
     }
 
     /**
-     * Checks whether the destination square is occupied by a friendly piece
-     * of the same color as the moving piece.
+     * Checks whether the destination square is occupied by a friendly piece.
      *
      * @param movingPiece the piece being moved
      * @param targetPiece the piece currently occupying the destination square (may be null)
@@ -57,41 +93,50 @@ public class CaptureManager {
     }
 
     /**
-     * Executes a move on the 8x8 piece grid and captures any opponent piece
-     * occupying the destination square so it is removed from the board.
+     * Validates turn ownership, checks piece movement/capturing rules via {@link Board},
+     * executes the move, and records any captured opponent piece.
      *
-     * @param grid        the 8x8 array representing the current board state
-     * @param from        the starting position of the moving piece
-     * @param destination the target position to move the piece to
-     * @return the captured opponent {@code Piece} if a capture occurred, or {@code null} otherwise
+     * @param board       the active game board
+     * @param from        the starting coordinate
+     * @param destination the target coordinate
+     * @param currentTurn the color of the player whose turn it is
+     * @return a {@link MoveResult} indicating whether the move succeeded and any captured piece
      */
-    public Piece executeMoveAndCapture(Piece[][] grid, Position from, Position destination) {
-        if (grid == null || from == null || destination == null
+    public MoveResult executeMove(Board board, Position from, Position destination, Color currentTurn) {
+        if (board == null || from == null || destination == null
                 || !from.isValid() || !destination.isValid()
                 || from.equals(destination)) {
-            return null;
+            return new MoveResult(false, null, "Invalid move selection.");
         }
 
-        Piece movingPiece = grid[from.getRow()][from.getCol()];
-        Piece targetPiece = grid[destination.getRow()][destination.getCol()];
-
-        if (movingPiece == null || isFriendlyOccupied(movingPiece, targetPiece)) {
-            return null;
+        Piece movingPiece = board.getPiece(from);
+        if (movingPiece == null) {
+            return new MoveResult(false, null, "There is no piece on " + from + ".");
         }
 
-        Piece capturedPiece = null;
+        if (movingPiece.getColor() != currentTurn) {
+            return new MoveResult(false, null, "It is " + currentTurn + "'s turn.");
+        }
+
+        Piece targetPiece = board.getPiece(destination);
+        if (isFriendlyOccupied(movingPiece, targetPiece)) {
+            return new MoveResult(false, null, "Cannot capture your own piece.");
+        }
+
+        boolean moved = board.movePiece(from, destination);
+        if (!moved) {
+            return new MoveResult(false, null,
+                    "Illegal move: " + movingPiece.getClass().getSimpleName() + " cannot move to " + destination + ".");
+        }
+
         if (isOpponentCapture(movingPiece, targetPiece)) {
-            capturedPiece = targetPiece;
-            recordCapture(movingPiece.getColor(), capturedPiece);
+            recordCapture(currentTurn, targetPiece);
+            return new MoveResult(true, targetPiece,
+                    currentTurn + " captured " + targetPiece.getColor() + " " + targetPiece.getClass().getSimpleName() + "!");
         }
 
-        // Remove piece from its old square and overwrite the destination square
-        // so any captured piece disappears from the board.
-        grid[from.getRow()][from.getCol()] = null;
-        movingPiece.setPosition(destination);
-        grid[destination.getRow()][destination.getCol()] = movingPiece;
-
-        return capturedPiece;
+        return new MoveResult(true, null,
+                currentTurn + " moved " + movingPiece.getClass().getSimpleName() + " from " + from + " to " + destination + ".");
     }
 
     /**
