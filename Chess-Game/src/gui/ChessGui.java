@@ -11,6 +11,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -36,8 +38,8 @@ import utils.Position;
 
 /**
  * Swing GUI window for the Chess Game with a Game menu bar (New, Save, Load),
- * turn enforcement, validated piece movement and capturing, and King-capture
- * endgame notification.
+ * a side panel for move history, captured pieces, and undo, plus validated
+ * piece movement, capturing, and King-capture endgame notification.
  */
 public class ChessGui extends JFrame {
 
@@ -59,17 +61,23 @@ public class ChessGui extends JFrame {
     /** Panel holding the 8x8 chessboard. */
     private final JPanel boardPanel;
 
+    /** Side panel showing move history, captured pieces, and Undo button. */
+    private final HistoryPanel historyPanel;
+
     /** Status bar displaying turn and capture updates. */
     private final JLabel statusLabel;
 
     /** Handles validated moves and piece capturing. */
-    private CaptureManager captureManager;
+    private final CaptureManager captureManager;
 
     /** Handles King capture winner notification and exit. */
     private final EndgameNotifier endgameNotifier;
 
     /** Handles saving and loading game state files. */
     private final GameStateManager gameStateManager;
+
+    /** Ordered list of all moves made in the current game. */
+    private final List<MoveRecord> moveHistory;
 
     /** Color of the player whose turn it currently is. */
     private Color currentTurn;
@@ -90,6 +98,7 @@ public class ChessGui extends JFrame {
         this.captureManager = new CaptureManager();
         this.endgameNotifier = new EndgameNotifier();
         this.gameStateManager = new GameStateManager();
+        this.moveHistory = new ArrayList<>();
         this.currentTurn = Color.WHITE;
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -113,13 +122,17 @@ public class ChessGui extends JFrame {
 
         attachMouseControls();
 
+        historyPanel = new HistoryPanel(e -> undoLastMove());
+
         statusLabel = new JLabel("Turn: WHITE — Click or drag a piece to move.");
         statusLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
         add(boardPanel, BorderLayout.CENTER);
+        add(historyPanel, BorderLayout.EAST);
         add(statusLabel, BorderLayout.SOUTH);
 
         refreshBoard();
+        refreshHistoryPanel();
         pack();
         setLocationRelativeTo(null);
         setResizable(false);
@@ -157,15 +170,17 @@ public class ChessGui extends JFrame {
     }
 
     /**
-     * Resets the board, turn state, selection, and capture tracking for a fresh game.
+     * Resets the board, turn state, move history, and capture tracking for a fresh game.
      */
     private void startNewGame() {
         board.initializeBoard();
-        captureManager = new CaptureManager();
+        captureManager.reset();
+        moveHistory.clear();
         currentTurn = Color.WHITE;
         selectedPos = null;
         pressPos = null;
         refreshBoard();
+        refreshHistoryPanel();
         statusLabel.setText("New game started. Turn: WHITE — Click or drag a piece to move.");
     }
 
@@ -216,10 +231,12 @@ public class ChessGui extends JFrame {
 
             try {
                 currentTurn = gameStateManager.loadGame(board, file);
-                captureManager = new CaptureManager();
+                captureManager.reset();
+                moveHistory.clear();
                 selectedPos = null;
                 pressPos = null;
                 refreshBoard();
+                refreshHistoryPanel();
                 statusLabel.setText("Game loaded from " + file.getName() + ". Turn: " + currentTurn);
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(
@@ -229,6 +246,69 @@ public class ChessGui extends JFrame {
                         JOptionPane.ERROR_MESSAGE
                 );
             }
+        }
+    }
+
+    /**
+     * Reverts the game to the state immediately before the last move,
+     * restoring piece positions, any captured piece, and the player's turn.
+     */
+    private void undoLastMove() {
+        if (moveHistory.isEmpty()) {
+            return;
+        }
+
+        MoveRecord lastMove = moveHistory.remove(moveHistory.size() - 1);
+
+        // Snapshot all remaining pieces currently on the board
+        List<Piece> restoredPieces = new ArrayList<>();
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                Position pos = new Position(r, c);
+                Piece p = board.getPiece(pos);
+                if (p != null && !pos.equals(lastMove.getTo())) {
+                    restoredPieces.add(p);
+                }
+            }
+        }
+
+        // Move the piece back to its starting square
+        Piece movedPiece = lastMove.getMovedPiece();
+        movedPiece.setPosition(lastMove.getFrom());
+        restoredPieces.add(movedPiece);
+
+        // Restore the captured piece if one was taken
+        Piece capturedPiece = lastMove.getCapturedPiece();
+        if (capturedPiece != null) {
+            capturedPiece.setPosition(lastMove.getTo());
+            restoredPieces.add(capturedPiece);
+            rebuildCaptureHistory();
+        }
+
+        // Rebuild the board grid cleanly
+        board.clearBoard();
+        for (Piece p : restoredPieces) {
+            board.placePiece(p);
+        }
+
+        // Restore turn and clear any active square selection
+        currentTurn = lastMove.getPlayerColor();
+        selectedPos = null;
+        pressPos = null;
+
+        refreshBoard();
+        refreshHistoryPanel();
+        statusLabel.setText("Undid move: " + lastMove + ". Turn: " + currentTurn);
+    }
+
+    /** Rebuilds captured-piece tracking from the moves that remain in history. */
+    private void rebuildCaptureHistory() {
+        captureManager.reset();
+        Board replayBoard = new Board();
+        replayBoard.initializeBoard();
+        for (MoveRecord move : moveHistory) {
+            captureManager.executeMove(
+                    replayBoard, move.getFrom(), move.getTo(), move.getPlayerColor());
         }
     }
 
@@ -289,14 +369,15 @@ public class ChessGui extends JFrame {
     }
 
     /**
-     * Attempts a validated move, switches turns on success, refreshes the board,
-     * and triggers endgame notification if a King was captured.
+     * Attempts a validated move, records it in history, switches turns on success,
+     * refreshes the board and side panel, and checks for King capture.
      *
      * @param from        the starting coordinate
      * @param destination the target coordinate
      */
     private void attemptMove(Position from, Position destination) {
         Color movingColor = currentTurn;
+        Piece movingPiece = board.getPiece(from);
         CaptureManager.MoveResult result = captureManager.executeMove(board, from, destination, currentTurn);
 
         if (!result.isMoved()) {
@@ -304,11 +385,23 @@ public class ChessGui extends JFrame {
             return;
         }
 
+        // Record the move for history and undo
+        MoveRecord record = new MoveRecord(
+                moveHistory.size() + 1,
+                movingColor,
+                movingPiece,
+                from,
+                destination,
+                result.getCapturedPiece()
+        );
+        moveHistory.add(record);
+
         // Switch turns after a valid move
         currentTurn = currentTurn.opposite();
 
-        // Refresh immediately so any captured piece disappears before the pop-up appears
+        // Refresh immediately so board, move history, and captured pieces update before any pop-up
         refreshBoard();
+        refreshHistoryPanel();
 
         if (result.getCapturedPiece() != null) {
             statusLabel.setText(result.getMessage() + " Next turn: " + currentTurn);
@@ -342,6 +435,17 @@ public class ChessGui extends JFrame {
     }
 
     /**
+     * Updates the side panel with the latest move history and captured pieces.
+     */
+    private void refreshHistoryPanel() {
+        historyPanel.updateDisplay(
+                moveHistory,
+                captureManager.getCapturedByWhite(),
+                captureManager.getCapturedByBlack()
+        );
+    }
+
+    /**
      * Converts pixel coordinates inside the board panel to a Position.
      *
      * @param x the x-coordinate in pixels
@@ -365,7 +469,7 @@ public class ChessGui extends JFrame {
      * @param piece the piece to convert
      * @return the Unicode string representing the piece
      */
-    private String getUnicodeSymbol(Piece piece) {
+    public static String getUnicodeSymbol(Piece piece) {
         boolean white = piece.getColor() == Color.WHITE;
         if (piece instanceof King)   return white ? "\u2654" : "\u265A";
         if (piece instanceof Queen)  return white ? "\u2655" : "\u265B";

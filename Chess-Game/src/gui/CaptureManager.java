@@ -177,4 +177,16 @@ public class CaptureManager {
         capturedByWhite.clear();
         capturedByBlack.clear();
     }
+    /**
+     * Removes the most recently recorded captured piece for the specified player.
+     * Used when undoing a move that resulted in a capture.
+     *
+     * @param capturerColor the color of the player whose last capture should be undone
+     */
+    public void removeLastCapture(Color capturerColor) {
+        List<Piece> targetList = (capturerColor == Color.WHITE) ? capturedByWhite : capturedByBlack;
+        if (!targetList.isEmpty()) {
+            targetList.remove(targetList.size() - 1);
+        }
+    }
 }
